@@ -1,0 +1,34 @@
+name: patched-release
+
+# Builds and publishes a release of this fork. The fork carries fixes that are
+# still waiting for review upstream, on top of an upstream release tag.
+on:
+  push:
+    tags:
+      - 'v*-patched.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+      - run: ./.github/gh-actions-runner-xcode-select.sh
+      - run: brew install bash fish xcbeautify swiftly
+      - run: swiftly init --skip-install --assume-yes --verbose && swiftly install
+      - name: Build
+        run: |
+          # "-" means "Sign to run locally". There is no aerospace-codesign-certificate on GH Actions
+          ./build-release.sh --codesign-identity - --build-version "${GITHUB_REF_NAME#v}"
+      - name: cat ./.release/xcodebuild.log
+        if: ${{ always() }}
+        run: 'if test -f ./.release/xcodebuild.log; then cat ./.release/xcodebuild.log; fi'
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ".release/AeroSpace-$GITHUB_REF_NAME.zip" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Upstream ${GITHUB_REF_NAME%-patched.*} plus https://github.com/nikitabobko/AeroSpace/pull/2317"
